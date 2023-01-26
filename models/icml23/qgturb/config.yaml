@@ -1,0 +1,7 @@
+de: # Ground-truth differential equation cfg
+  seed: 1
+  dtype: 'float64' # np.dtype
+  n_tsnippet: 20
+data_loader:
+  val_size: 0.20
+  test_size: 0.05

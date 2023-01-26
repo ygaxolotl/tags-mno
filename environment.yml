@@ -1,0 +1,23 @@
+name: pce-pinns
+channels:
+  - defaults
+dependencies: # tested on Ubuntu 18.04 and CentOS Linux release 7.7.1908
+  - python=3.8.5
+  - numpy # Tested with 1.19.2
+  - torchvision 
+  - pytorch # 1.7.1 and 1.13
+  - cudatoolkit # =11.0.221
+  - pandas # 1.2.1
+  - scikit-learn # 0.23.2
+  - matplotlib # 3.3.2
+  - tqdm # 4.55.1
+  - jupyterlab # 3.2.4
+  - pydantic
+  - scikit-image
+  - pip
+  - pip:
+    - ray # 1.4.1 - or install via pip install ray[default]
+    - wandb # 0.11.2
+    - scikit-optimize # 0.8.1
+    - pydantic
+    - aiohttp=3.7.4 # To run ray memory

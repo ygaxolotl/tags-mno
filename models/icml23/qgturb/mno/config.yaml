@@ -1,0 +1,40 @@
+model:
+  type: 'mno'
+  model_dims: 2
+  depth: 1 # 1
+  n_channels: 4 #3
+  n_modes: [4,4] # [55] len(n_modes) == model_dims; Even value will set number of retained modes, $k_{\max}=n_modes+1$,
+  use_bnorm: False
+  seed: 1
+  dtype: 'float32'
+  means_x: [1.24206201e-17]
+  stdevs_x: [4.52782422]
+  means_y: [-2.85578852e-18]
+  stdevs_y: [7.46208721]
+optimizer:
+  # FNO
+  lr: 0.01 # 0.01, 0.005
+  step_size: 20 # 20
+  gamma: .9 #  .3
+  # 'weight_decay: 0.
+n_epochs: 10
+dir_raw_data: '../torchqg/output/geo_dump'
+dir_interim_data: 'data/interim/temp/qgturb/qgturb'
+dir_out: 'models/temp/qgturb/mno/'
+dir_predictions: 'models/temp/qgturb/mno/predictions/'
+dir_results: 'models/temp/qgturb/mno/results/'
+dir_spill: '/nobackup1/lutjens/tmp/spill'
+data_loader:
+  test_mode: 'sequential_coupled' # 'batch'
+  normalize: False
+  save_fno_data: False # TODO: remove this.
+  dir_store_ml_data: 'data/processed/temp/qgturb/mno/'
+  statics: []
+  chunk_size: None
+  batch_size: None
+  n_hist: 0
+  n_fut: 0
+  seed: 1
+  p_hflip: 0.5
+  p_vflip: 0.5
+  split_style: 'random_snippets'

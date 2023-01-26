@@ -1,0 +1,20 @@
+de: # Ground-truth differential Equation data
+  tmax: 2.
+  dt: 0.005
+  warmup: True
+  random_ic: True
+  random_ic_y: True
+  random_ic_z: False
+  param: 'z_null'
+  K: 4
+  n_samples: 1000
+  seed: 1
+  use_rk4: True
+  y_param_mode: 'superparam' # TODO: this only holds for est_lorenz==no-scale-sep
+  dtype: 'float64' # np.dtype
+  n_snippets: 5000 # 4992
+  n_tsnippet: 400
+  n_tasks: 2
+data_loader:
+  val_size: 0.25
+  test_size: 0.0
