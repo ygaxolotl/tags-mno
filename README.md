@@ -1,8 +1,8 @@
-# multiscale-neural-op: Learning Fast and Grid-independent PDE Solvers
+# multiscale-neural-op: Creating Fast PDE Surrogates by Learning Resolution-variable Subgrid Parametrizations
 This repository implements multiscale neural operator. A fast and grid-independent surrogate model of multiscale PDEs by combining neural operators with coarse-grained simulations. 
 
 The repository contains the code of the following papers:
-- Multiscale Neural Operator: Learning Fast and Grid-independent PDE Solvers
+- Multiscale Neural Operator: Creating Fast PDE Surrogates by Learning Resolution-variable Subgrid Parametrizations
 
 # Structure
 - See [here](https://github.com/drivendata/cookiecutter-data-science) for folder structure.
@@ -10,8 +10,7 @@ The repository contains the code of the following papers:
 
 # Install
 ```
-git clone git@github.com:<author>/pce-pinns.git
-cd pce-pinns
+cd tags-mno
 conda env create -f environment.yml # This may take ~20min
 conda activate pce-pinns
 pip install -e .
@@ -20,8 +19,6 @@ wandb login # Login to ML logging tool
 # In case the above code is exhibiting problems please try executing the following:
 pip install ray # tested with 1.4.1
 pip install -U pydantic
-git clone https://github.com/<author>/deepxde.git pce_pinns/deepxde # TODO: get rid of this installation requirement by installing deepxde as submodule
-python pce_pinns/deepxde/deepxde/backend/set_default_backend.py pytorch                             
 ```
 
 # Run Multiscale Neural Operator for Lorenz96
