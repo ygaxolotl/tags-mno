@@ -12,6 +12,8 @@ from pce_pinns.utils.config import load_config
 from pce_pinns.solver.qgturb import QgturbEq, reshape_qgturb_to_nn_model
 from pce_pinns.models.mno.mno import interpolate_param_mno
 
+import torchqg.workflow as workflow
+
 def load_raw_data(load_data_path, system_name='\\mathcal{F}'):
     """
     Loads raw quasi-geostrophic turbulence data
@@ -41,9 +43,12 @@ if __name__ == "__main__":
         help='Name of solution variable that shall be estimated by neural net, e.g., '\
         '"no-scale-sep-param-no-mem"'\
         '                   for R_{0:Nyl,0:Nxl}(t+1)        = NN(Q_{0:Nyl,0:Nxl}(t))'\
+        '"pure-ml-sol"'\
+        '                   for Q_{0:Nyl,0:Nxl}(t+1)        = NN(Q_{0:Nyl,0:Nxl}(t))'
         )
     parser.add_argument('--model_type', default='mno', type=str,
-        help='Name of model that will be used, "mno", "clim", "poly", "fcnn".')
+        help='Name of model that will be used, "mno", "clim", "poly", "fcnn",'\
+        '"fno-pure-ml-sol".')
     parser.add_argument('--n_samples', default=50, type=int,
             help='Number of samples in forward and inverse solution.')
     parser.add_argument('--load_data_path', default=None, type=str,
@@ -93,7 +98,10 @@ if __name__ == "__main__":
     ##################
     # Get interim ML-ready dataset
     ##################
-    if args.load_data_path:
+    if args.eval_model_digest is not None:
+        # Test works on raw data        
+        pass
+    elif args.load_data_path:
         assert args.load_interim_data_path is None, "Multiple data load paths. Only pass one."
         assert args.load_processed_data_path is None, "Multiple data load paths. Only pass one."
         # Load raw dataset
@@ -102,9 +110,10 @@ if __name__ == "__main__":
         # Convert raw to interim ML-ready dataset
         u_target, grid, y_args = reshape_qgturb_to_nn_model(sol=u_target, 
             tgrid=tgrid, u_args=u_args, 
-            n_tsnippet=config_default['de']['n_tsnippet'], est_qgturb=args.mode_target)
+            n_tsnippet=config_default['de']['n_tsnippet'], 
+            est_qgturb=args.mode_target)
         config_default['de']['n_snippets'] = u_target.shape[0] 
-       
+ 
         if args.store_interim_data_path:
             store_interim_data(args.store_interim_data_path, u_args=y_args, 
                 u_target=u_target, grid=grid)
@@ -134,8 +143,8 @@ if __name__ == "__main__":
     qgturbEq.solve()
     """
     # Train FNO2D
-    print('solved')
-    u, u_pred = interpolate_param_mno(grid=grid, 
+    if args.eval_model_digest is None:
+      u, u_pred = interpolate_param_mno(grid=grid, 
         y=u_target, y_args=y_args,
         n_layers=config_default['model']['depth'], 
         n_units=config_default['model']['n_modes'], 
@@ -149,30 +158,51 @@ if __name__ == "__main__":
         run_parallel=args.parallel, no_test=True,
         load_processed_data_path=args.load_processed_data_path)# args.no_test)
 
-    # eval_model_digest = "10083b0832"
-    # Test long-term inference in Coupled Model
+    ###
+    # Evaluation 
+    ###
     from pathlib import Path
     from pce_pinns.models.mno.config import get_trained_model_cfg
     from pce_pinns.models.fno import fno2d_gym 
     from torchqg.sgs import MNOparam
     
     ## Load model
-    dir_out = Path(config_default['dir_out'])
-    print('dir_out', dir_out)
-    cfg = get_trained_model_cfg(args.eval_model_digest, dir_out)
-    model_load = fno2d_gym.make_model(cfg["model"])
-    model_load.load_state_dict(torch.load(str(dir_out / "{}_modstat.pt".format(args.eval_model_digest)))) 
+    def load_model(eval_model_digest, dir_out):
+        # dir_out = config_default['dir_out']
+        dir_out = Path(dir_out)
+        cfg = get_trained_model_cfg(eval_model_digest, dir_out)
+        model_load = fno2d_gym.make_model(cfg["model"])
+        model_load.load_state_dict(torch.load(str(dir_out / "{}_modstat.pt".format(eval_model_digest))))
+        return model_load
 
+    eval_model_names = ['mno', 'fno-pure-ml-sol']
     ## Initialize coupled diffeq
     # Currently validating on continued last step of training data.
     # todo: replace args.load_data_path with validation data.
     # e.g., provide qgturb/main.py init_data_path = 'output/spinup_10000_dump' from a different random seed spinup. OR from the END of the training data.
-    qgturbEq = QgturbEq(init_data_path=args.load_data_path, init_tstep=0)
-    sgs_mno = MNOparam(model=model_load)
-    qgturbEq.init_les(sgs=sgs_mno, name='mno')
+    # Currently evaluating on last steps AFTER training
+    qgturbEq = QgturbEq(init_data_path=args.load_data_path, init_tstep=-1)
 
-    ## Run coupled model
-    qgturbEq.solve(dir=dir_out / 'predictions', name=args.eval_model_digest, iters=2, store_iters=2)
+    if 'mno' in eval_model_names:
+        # Add model with MNO parametrization
+        dir_out = Path('models/temp/qgturb/mno')
+        eval_mno_digest = '03a25874ca' # b4e8334aa9'
+        print(f'Please double-check if eval_mno_digest for evaluation was updated: {eval_mno_digest}')
+        model_mno = load_model(eval_mno_digest, dir_out)
+        sgs_mno = MNOparam(model=model_mno)
+        qgturbEq.init_les(sgs=sgs_mno, name='mno')
+    if 'fno-pure-ml-sol' in eval_model_names:
+        # Add pure ML model
+        dir_out = Path('models/temp/qgturb/fno-pure-ml-sol')
+        model_pure_ml_sol = load_model(args.eval_model_digest, dir_out)
+        qgturbEq.init_pure_ml(model=model_pure_ml_sol, name='pure-ml-sol')
+
+    ## Run coupled model and plot workflow.diagnoses
+    diagnostics = [workflow.diag_pred_vs_target_sol_err,
+                workflow.diag_pred_vs_target_param,
+                workflow.diag_fields,]
+    qgturbEq.solve(dir=dir_out / 'predictions', name=args.eval_model_digest, 
+        iters=2, store_iters=2, diags=diagnostics)
 
     # Evaluate
     ## RMSE over time.

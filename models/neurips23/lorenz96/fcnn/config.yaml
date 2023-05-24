@@ -1,0 +1,18 @@
+model:
+  type: 'fcnn' # 'poly'
+  n_layers: 2 # 2
+  n_units: 32 # 128
+  seed: 1
+optimizer:
+  lr: 0.01
+n_epochs: 20
+dir_raw_data: 'data/raw/temp/lorenz96/fcnn/lorenz96'
+dir_out: 'models/neurips22/lorenz96/fcnn/'
+dir_predictions: 'models/temp/lorenz96/fcnn/predictions/'
+dir_results: 'models/temp/lorenz96/fcnn/results/'
+data_loader: # Data loader
+  test_mode: 'sequential_coupled_local' # 'batch'
+  normalize: False
+  batch_size: None
+  seed: 1
+  dir_store_ml_data: 'data/processed/temp/lorenz96/fcnn/'

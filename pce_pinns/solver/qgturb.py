@@ -7,8 +7,8 @@ import h5py
 from pce_pinns.utils.shaping import split_sequences_into_snippets
 from pce_pinns.solver.diffeq import DiffEq
 
-from torchqg.qg import to_spectral, to_physical, QgModel
-from torchqg.sgs import Constant, MNOparam, Testparam
+from torchqg.qg import to_spectral, to_physical, QgModel, QgModelPureML
+from torchqg.sgs import Constant
 import torchqg.workflow as workflow
 
 class QgturbEq(DiffEq):
@@ -52,8 +52,8 @@ class QgturbEq(DiffEq):
           Ly=self.Ly,
           dt=self.dt,
           t0=0.0,
-          B=0.0,    # Planetary vorticity y-gradient
-          mu=self.mu,    # Linear drag
+          B=0.0,    # Planetary vorticity y-gradient, aka, Rossby parameter?
+          mu=self.mu,    # Linear drag coefficient
           nu=self.nu,    # Viscosity coefficient
           nv=1,     # Hyperviscous order (nv=1 is viscosity)
           eta=eta,  # Topographic PV
@@ -99,7 +99,7 @@ class QgturbEq(DiffEq):
         """
         Initializes LES model(s)
         Args:
-          sgs: torchqg.sgs
+          sgs: torchqg.sgs, e.g., MNOparam
         """
         # Low res model(s).
         self.scale = 4
@@ -121,7 +121,7 @@ class QgturbEq(DiffEq):
           Ny=Nyl,
           Lx=self.Lx,
           Ly=self.Ly,
-          dt=self.dt,
+          dt=self.dt*self.scale,
           t0=0.0,
           B=0.0,     # Planetary vorticity y-gradient
           mu=self.mu,     # Linear drag
@@ -138,11 +138,39 @@ class QgturbEq(DiffEq):
 
         self.les_models.append(m1)
 
+    def init_pure_ml(self, model, name=''):
+      """
+      Initializes LES that uses ML model to forecast large-scale dynamics
+      Args:
+        model torch.model
+      """
+      # Low res model(s).
+      self.scale = 4
+      Nxl = int(self.Nx / self.scale)
+      Nyl = int(self.Ny / self.scale)
+      
+      m_pure_ml = QgModelPureML(
+        name=name,
+        Nx=Nxl,
+        Ny=Nyl,
+        Lx=self.Lx,
+        Ly=self.Ly,
+        dt=self.dt,
+        t0=0.0,
+        model=model,
+        
+      )
+
+      # Initialize from DNS vorticity field.
+      m_pure_ml.pde.sol = self.h.filter(m_pure_ml.grid, self.scale, self.h.pde.sol)
+      print('LES Model: ', m_pure_ml)
+
+      self.les_models.append(m_pure_ml)
     def step(self):
         pass
 
     def solve(self,dir='data/raw/temp/qgturb/',
-      name='geo', iters=100, store_iters=100):
+      name='geo', iters=100, store_iters=100, diags=[workflow.diag_fields]):
         # Will produce two images in folder `dir` with the final fields after <iters> iterations.
         workflow.workflow(
           dir=dir,
@@ -150,10 +178,7 @@ class QgturbEq(DiffEq):
           iters=iters, # 10000,  # Model iterations; 6.15min/1K iters on 1CPU
           steps=store_iters, # Total number of iterations that will be saved
           scale=self.scale,  # Kernel scale
-          diags=[       # Diagnostics
-            workflow.diag_pred_vs_target,
-            workflow.diag_fields,
-          ],
+          diags=diags, # Diagnostics
           system=self.h,       # DNS system
           models=self.les_models, # LES models; or empty []
           dump=True
@@ -179,6 +204,9 @@ class QgturbEq(DiffEq):
 
     # Wind stress forcing.
     def Fs(self, i, sol, dt, t, grid):
+      """
+      Note: Forcing is independent of time-step dt. Only depends on t_unit. 
+      """
       phi_x = math.pi * math.sin(1.2e-6 / self.t_unit()**(-1) * t)
       phi_y = math.pi * math.sin(1.2e-6 * math.pi / self.t_unit()**(-1) * t / 3)
       y = torch.cos(4 * grid.y + phi_y).view(grid.Ny, 1) - torch.cos(4 * grid.x + phi_x).view(1, grid.Nx)
@@ -212,7 +240,7 @@ def reshape_qgturb_to_snippets(tgrid, sol, u_args, n_tsnippet, n_snippets=None, 
     # tgrid is periodic after n_tsnippet time steps
     tgrid_snippet = tgrid[:n_tsnippet]
 
-    # Split sol and u-args of length n_tgrid into snippets of length n_tsnippet
+    # Split sol and u_args of length n_tgrid into snippets of length n_tsnippet
     sol_snippets = split_sequences_into_snippets(sol[np.newaxis,...,0], n_snippets, n_tsnippet)[...,np.newaxis] # Init shape
     for i in range(sol.shape[-1]-1):
         sol_snippets[...,i] = split_sequences_into_snippets(sol[np.newaxis,...,i], n_snippets, n_tsnippet)
@@ -238,17 +266,11 @@ def reshape_qgturb_to_fno2d(sol, tgrid, est_qgturb=None,
         grid np.array(n_samples, n_tgrid, n_x1grid, n_x2grid, dim_grid): dim_grid = 1
         y_args np.array((n_samples, n_tgrid, n_x1grid, n_x2grid, dim_y_args))
     """
-    if est_qgturb == 'no-scale-sep-param-no-mem':
-        # Estimates exact parametrization, r, from filtered DNS over the full state
-        u_target = sol
-        y_args = u_args
-        grid = tgrid[np.newaxis, :, np.newaxis, np.newaxis, np.newaxis]
-        grid = np.repeat(grid, axis=2, repeats=u_target.shape[2]) # n_x1grid
-        grid = np.repeat(grid, axis=3, repeats=u_target.shape[3]) # n_x2grid
-    else:
-        u_target = sol
-        grid = tgrid[np.newaxis, :, np.newaxis]
-        y_args = u_args
+    u_target = sol
+    y_args = u_args
+    grid = tgrid[np.newaxis, :, np.newaxis, np.newaxis, np.newaxis]
+    grid = np.repeat(grid, axis=2, repeats=u_target.shape[2]) # n_x1grid
+    grid = np.repeat(grid, axis=3, repeats=u_target.shape[3]) # n_x2grid
 
     return u_target, grid, y_args
 
@@ -260,17 +282,40 @@ def reshape_qgturb_to_nn_model(sol,
     """
     Reshapes torchqg.workflow() output grid into the desired in-/output
     Args:
-        sol np.array([steps, Nyl, Nyx, 1]): Vorticity from filtered DNS
+        sol np.array([steps, Nyl, Nyx, 1]): Parametrization
         tgrid np.array([steps, 1]): Temporal from filtered DNS
-        u_args np.array([steps, Nyl, Nyx, 1]): 
+        u_args np.array([steps, Nyl, Nyx, 1]): Vorticity from filtered DNS 
     """
+    # Align 
     if n_tsnippet is not None:
         tgrid, sol, sol_prior, u_args = reshape_qgturb_to_snippets(tgrid=tgrid, 
             sol=sol, sol_prior=sol_prior, u_args=u_args, n_snippets=n_snippets,
             n_tsnippet=n_tsnippet)
 
+    # Select in-/output relation that shall be learned.
+    if est_qgturb == "no-scale-sep-param-no-mem":
+      # Estimates exact parametrization, r, from filtered DNS over the full state
+      pass
+    elif est_qgturb == "pure-ml-sol":
+      # Target is the vorticity, but shifted forward by t_offset time steps along
+      # the n_tsnippet dimension. The last time step is filled with all zeroes.
+      # This is assuming that all steps within one snippet come from the same auto-
+      # regressive process. Steps from distinct snippet can be generated by differing
+      # processes.
+      del sol # parametrization is not needed and can be discarded from memory.
+      t_offset = 1
+      sol = u_args.copy()
+      sol = sol[:,t_offset:,...]
+      u_blank = np.zeros(sol[:,:t_offset,...].shape, dtype=u_args.dtype)
+      sol = np.concatenate((sol, u_blank), axis=1)
+      # Input is the vorticity, but last time step filled with zeros.
+      u_args = u_args[:,:-t_offset,...]
+      u_args = np.concatenate((u_args, u_blank), axis=1)
+
     # Select function to reshape.  
     if model_cfg['type'] == 'mno':
+        reshape_fn = reshape_qgturb_to_fno2d
+    elif model_cfg['type'] == 'fno-pure-ml-sol':
         reshape_fn = reshape_qgturb_to_fno2d
     elif model_cfg['type'] == 'poly':
         reshape_fn = reshape_qgturb_to_poly

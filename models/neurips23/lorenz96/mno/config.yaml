@@ -1,0 +1,31 @@
+model:
+  type: 'mno'
+  model_dims: 1 # 1 for 1D and 2 for 2D FNO
+  depth: 3 # 1
+  n_channels: 32 #3
+  n_modes: [2] # [55] len(n_modes) == model_dims; Even value will set number of retained modes, $k_{\max}=n_modes+1$,
+  use_bnorm: False
+  seed: 1
+  dtype: 'float32'
+optimizer:
+  # FNO
+  lr: 0.001 # 0.01, 0.005
+  step_size: 20 # 20
+  gamma: .9 #  .3
+  # 'weight_decay: 0.
+n_epochs: 4
+dir_raw_data: 'data/raw/temp/lorenz96/mno/lorenz96'
+dir_out: 'models/temp/lorenz96/mno/'
+dir_predictions: 'models/temp/lorenz96/mno/predictions/'
+dir_results: 'models/temp/lorenz96/mno/results/'
+data_loader:
+  test_mode: 'sequential_coupled' # 'batch'
+  normalize: False
+  save_fno_data: False # TODO: remove this.
+  dir_store_ml_data: 'data/processed/temp/lorenz96/mno/'
+  statics: []
+  chunk_size: None
+  batch_size: None
+  n_hist: 0
+  n_fut: 0
+  seed: 3
